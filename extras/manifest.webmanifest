@@ -1,0 +1,15 @@
+{
+  "name": "CAP Médecin",
+  "short_name": "CAP Médecin",
+  "description": "Réviser la médecine, de la PASS/LAS à l’EDN et aux ECOS : cours, QCM, cas cliniques, mémo, calculateurs.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3F6F8",
+  "theme_color": "#12355B",
+  "icons": [
+    { "src": "icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" }
+  ]
+}
