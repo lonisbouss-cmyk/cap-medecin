@@ -4,13 +4,14 @@ import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, Platfo
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { C, SOMBRE, Card, Btn, Notice, u } from './ui';
 
-// Projet Supabase de CAP Médecin (clé publique « anon », protégée par les règles RLS)
-export const SUPABASE_URL = 'https://kwrayxoojgsobuqiadpp.supabase.co';
-export const SUPABASE_KEY = 'sb_publishable_KYLA_qeDv5UofI_HDJnVBw_bXc7I66j';
+// Projet Supabase « santé », partagé avec CAP Infirmier (clé publique, protégée par les règles RLS).
+// Tables propres à CAP Médecin : progress_medecin, signalements_medecin ; fonction tuteur-medecin.
+export const SUPABASE_URL = 'https://yhzlvhnulpiprhthjyrn.supabase.co';
+export const SUPABASE_KEY = 'sb_publishable_zA9IvBXP7rYCvEHaE3HvBQ_7R_3zVYH';
 export const CLOUD_OK = !!(SUPABASE_URL && SUPABASE_KEY);
 export const CONTACT = 'lonisboussouar@gmail.com';
 
-const SESSION = 'capm:session';
+const SESSION = 'capm:session2';
 const SANS_COMPTE = 'capm:sanscompte';
 
 export type User = { id: string; email: string };
@@ -97,7 +98,7 @@ export const auth = {
     await AsyncStorage.multiRemove([SESSION, SANS_COMPTE]).catch(() => {});
   },
   async supprimer() {
-    await api('/rest/v1/rpc/supprimer_mon_compte', { method: 'POST', auth: true, body: {} });
+    await api('/functions/v1/supprimer-compte', { method: 'POST', auth: true, body: {} });
     session = null;
     await AsyncStorage.multiRemove([SESSION, SANS_COMPTE]).catch(() => {});
   },
@@ -107,13 +108,13 @@ export const auth = {
 export const db = {
   async charger(): Promise<{ data: any; maj: number } | null> {
     if (!session) return null;
-    const rows = await api('/rest/v1/progress?select=data,updated_at&user_id=eq.' + session.user.id, { auth: true });
+    const rows = await api('/rest/v1/progress_medecin?select=data,updated_at&user_id=eq.' + session.user.id, { auth: true });
     if (!rows?.length) return null;
     return { data: rows[0].data, maj: Date.parse(rows[0].updated_at) || 0 };
   },
   async enregistrer(data: any) {
     if (!session) return;
-    await api('/rest/v1/progress?on_conflict=user_id', {
+    await api('/rest/v1/progress_medecin?on_conflict=user_id', {
       method: 'POST',
       auth: true,
       prefer: 'resolution=merge-duplicates,return=minimal',
@@ -121,7 +122,7 @@ export const db = {
     });
   },
   async signaler(cible: string, texte: string) {
-    await api('/rest/v1/signalements', {
+    await api('/rest/v1/signalements_medecin', {
       method: 'POST',
       auth: !!session,
       prefer: 'return=minimal',
@@ -133,7 +134,7 @@ export const db = {
 // ---------- tuteur IA et administration ----------
 export async function demanderTuteur(messages: { role: string; content: string }[]): Promise<string> {
   if (!session) throw new Error('Connecte-toi pour utiliser le tuteur.');
-  const d = await api('/functions/v1/tuteur', { method: 'POST', auth: true, body: { messages } });
+  const d = await api('/functions/v1/tuteur-medecin', { method: 'POST', auth: true, body: { messages } });
   if (!d?.texte) throw new Error(d?.erreur || 'Réponse vide du tuteur.');
   return d.texte;
 }
@@ -141,11 +142,11 @@ export async function demanderTuteur(messages: { role: string; content: string }
 export const estAdmin = (u: User | null) => !!u && u.email.toLowerCase() === CONTACT;
 
 export async function listerSignalements(tous: boolean) {
-  return api('/rest/v1/signalements?select=*&order=created_at.desc&limit=200' + (tous ? '' : '&traite=eq.false'), { auth: true });
+  return api('/rest/v1/signalements_medecin?select=*&order=created_at.desc&limit=200' + (tous ? '' : '&traite=eq.false'), { auth: true });
 }
 
 export async function marquerSignalement(id: number, traite: boolean) {
-  await api('/rest/v1/signalements?id=eq.' + id, { method: 'PATCH', auth: true, prefer: 'return=minimal', body: { traite } });
+  await api('/rest/v1/signalements_medecin?id=eq.' + id, { method: 'PATCH', auth: true, prefer: 'return=minimal', body: { traite } });
 }
 
 // ---------- écran de connexion ----------
@@ -263,7 +264,7 @@ export function AuthGate({ children }: { children: (user: User | null, sortir: (
         </View>
         <View style={{ padding: 20, width: '100%', maxWidth: 460, alignSelf: 'center' }}>
           <Text style={[u.h1, { fontSize: 22 }]}>{titres[mode]}</Text>
-          {mode === 'connexion' && <Text style={u.sub}>Ton compte enregistre ta progression et la retrouve sur tous tes appareils (téléphone et web).</Text>}
+          {mode === 'connexion' && <Text style={u.sub}>Ton compte enregistre ta progression et la retrouve sur tous tes appareils (téléphone et web). C’est le même compte que pour CAP Infirmier.</Text>}
           {mode === 'oubli' && <Text style={u.sub}>Indique ton adresse : tu recevras un lien pour choisir un nouveau mot de passe.</Text>}
           {!!info && <Notice>{info}</Notice>}
           {mode !== 'reinit' && <Champ label="Adresse e-mail" value={email} onChange={setEmail} mail />}
@@ -411,7 +412,7 @@ export function Compte({ user, sortir, sync }: { user: User | null; sortir: () =
         </Pressable>
       ) : (
         <View style={{ backgroundColor: C.koL, borderRadius: 12, padding: 12, marginTop: 6 }}>
-          <Text style={{ color: C.ink, marginBottom: 6 }}>Supprimer définitivement ton compte et ta progression enregistrée en ligne ? Cette action est irréversible.</Text>
+          <Text style={{ color: C.ink, marginBottom: 6 }}>Supprimer définitivement ton compte et ta progression enregistrée en ligne ? Ce compte est commun à CAP Médecin et CAP Infirmier : il sera supprimé pour les deux applications. Cette action est irréversible.</Text>
           {!!err && <Text style={{ color: C.ko, marginBottom: 6 }}>{err}</Text>}
           {busy ? <ActivityIndicator color={C.ko} /> : (
             <Btn title="Oui, supprimer mon compte" onPress={async () => {
