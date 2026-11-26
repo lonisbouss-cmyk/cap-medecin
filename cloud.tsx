@@ -130,6 +130,24 @@ export const db = {
   },
 };
 
+// ---------- tuteur IA et administration ----------
+export async function demanderTuteur(messages: { role: string; content: string }[]): Promise<string> {
+  if (!session) throw new Error('Connecte-toi pour utiliser le tuteur.');
+  const d = await api('/functions/v1/tuteur', { method: 'POST', auth: true, body: { messages } });
+  if (!d?.texte) throw new Error(d?.erreur || 'Réponse vide du tuteur.');
+  return d.texte;
+}
+
+export const estAdmin = (u: User | null) => !!u && u.email.toLowerCase() === CONTACT;
+
+export async function listerSignalements(tous: boolean) {
+  return api('/rest/v1/signalements?select=*&order=created_at.desc&limit=200' + (tous ? '' : '&traite=eq.false'), { auth: true });
+}
+
+export async function marquerSignalement(id: number, traite: boolean) {
+  await api('/rest/v1/signalements?id=eq.' + id, { method: 'PATCH', auth: true, prefer: 'return=minimal', body: { traite } });
+}
+
 // ---------- écran de connexion ----------
 type Mode = 'connexion' | 'inscription' | 'oubli' | 'reinit';
 
