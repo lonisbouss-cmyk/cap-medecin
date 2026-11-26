@@ -1,4 +1,21 @@
 // CAP Médecin — fonctionnement hors connexion : réseau d'abord, cache en secours
+const CACHE = 'capmedecin-v2';
+self.addEventListener('install', (e) => { self.skipWaiting(); });
+self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  e.respondWith(
+    fetch(req)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(req).then((r) => r || caches.match('./')))
+  );
+});
+// CAP Médecin — fonctionnement hors connexion : réseau d'abord, cache en secours
 const CACHE = 'capmedecin-v1';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
