@@ -14,6 +14,7 @@ export { METHODES, LEXIQUE, ADAGES } from './extras';
 export { ITEMS, PARTIES } from './items';
 export { ITEMS_FICHES } from './itemsmap';
 export { STATIONS, ARBRES, GESTES } from './outils2';
+export { TRIADES } from './triades';
 
 // Relecture médicale : renseigner le nom et la qualité du relecteur une fois la relecture faite.
 export const RELU = { par: '', le: '' };
