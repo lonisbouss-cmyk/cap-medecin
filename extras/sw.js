@@ -1,5 +1,5 @@
 // CAP Médecin — fonctionnement hors connexion : réseau d'abord, cache en secours
-const CACHE = 'capmedecin-v2';
+const CACHE = 'capmedecin-v3';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', (e) => {
