@@ -8,7 +8,8 @@ export type Fiche = {
   m: string; // id de matière
   titre: string;
   intro: string;
-  parts: { t: string; l: string[] }[];
+  parts: { t: string; l: string[]; rg?: 'A' | 'B' }[];
+  items?: number[]; // items de l'EDN
   art?: string[]; // ids de repères (mémo)
   arrets?: string[]; // ids de médicaments
   retenir: string[];
@@ -36,7 +37,7 @@ export type Arret = {
   apport: string; // mécanisme, effets indésirables, contre-indications
 };
 
-export type Question = { q: string; c: string[]; a: number; e: string; m: string };
+export type Question = { q: string; c: string[]; a: number | number[]; e: string; m: string };
 
 export type Etape = { q: string; c: string[]; a: number; e: string };
 export type CasPratique = { id: string; titre: string; m: string; niv: Niveau; enonce: string; etapes: Etape[]; retenir: string[]; fiches: string[] };
