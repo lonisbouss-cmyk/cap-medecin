@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Linking, TextInput, Platform, SafeAreaView, StatusBar, BackHandler } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { C, SOMBRE, Page, H1, H2, Sub, Card, Btn, Back, Tag, Chip, Chips, SearchBox, Bar, Notice, Row, norm, u } from './ui';
-import { MATIERES, NIVEAUX, FICHES, CODES, ARTICLES, ARRETS, QCM, CAS, METHODES, LEXIQUE, ADAGES, ITEMS, PARTIES, ITEMS_FICHES, STATIONS, ARBRES, GESTES, RELU } from './data';
+import { MATIERES, NIVEAUX, FICHES, CODES, ARTICLES, ARRETS, QCM, CAS, METHODES, LEXIQUE, ADAGES, ITEMS, PARTIES, ITEMS_FICHES, STATIONS, ARBRES, GESTES, RELU, TRIADES } from './data';
 import type { Fiche, Article, Arret, Question, CasPratique, Methode, Niveau } from './types';
 import { AuthGate, useSync, Signaler, Compte, CLOUD_OK, demanderTuteur, estAdmin, listerSignalements, marquerSignalement, type User } from './cloud';
 
@@ -21,6 +21,7 @@ type St = {
   jours: string[];
   examBest: number;
   ecos?: Record<string, number>;
+  favT?: string[];
   carnet?: { stages: { id: string; service: string; periode: string; notes: string }[]; gestes: Record<string, number> };
   niveau: Niveau | 'tous';
   box: Record<string, number>;
@@ -120,13 +121,15 @@ type Route =
   | { s: 'arbre'; id: string }
   | { s: 'carnet' }
   | { s: 'tuteur' }
-  | { s: 'admin' };
+  | { s: 'admin' }
+  | { s: 'triades' };
 
 const TABS: { id: string; label: string; ic: string; root: Route }[] = [
   { id: 'home', label: 'Accueil', ic: '⌂', root: { s: 'home' } },
   { id: 'cours', label: 'Fiches', ic: '❏', root: { s: 'cours' } },
   { id: 'outils', label: 'Outils', ic: '✚', root: { s: 'outils' } },
   { id: 'train', label: 'Réviser', ic: '✓', root: { s: 'train' } },
+  { id: 'triades', label: 'Triades', ic: '△', root: { s: 'triades' } },
   { id: 'progres', label: 'Progrès', ic: '◔', root: { s: 'progression' } },
 ];
 
@@ -248,6 +251,7 @@ function MainApp({ user, sortir }: { user: User | null; sortir: () => void }) {
     case 'carnet': screen = <Carnet {...P} />; break;
     case 'tuteur': screen = <Tuteur {...P} />; break;
     case 'admin': screen = <AdminView {...P} />; break;
+    case 'triades': screen = <TriadesView {...P} />; break;
   }
 
   return (
@@ -384,6 +388,7 @@ function Home({ st, go, openFiche, openArt, openArret, startQcm, switchTab, user
           ['⚕️', 'Mémo', () => go({ s: 'codes' })],
           ['🧮', 'Calculateurs', () => go({ s: 'delais' })],
           ['📂', 'Cas cliniques', () => go({ s: 'caslist' })],
+          ['△', 'Triades', () => switchTab('triades')],
           ['📈', 'Progrès', () => switchTab('progres')],
           ['💊', 'Médicaments', () => go({ s: 'arrets' })],
           ['✍️', 'Méthodologie', () => go({ s: 'methodes' })],
@@ -1618,6 +1623,80 @@ function APropos({ back }: PP) {
 }
 
 
+// ---------- Triades ----------
+function quizTriades(): Question[] {
+  const qs: Question[] = [];
+  shuffle(TRIADES).forEach((t, k) => {
+    const autres = shuffle(TRIADES.filter((x) => x.id !== t.id));
+    if (k % 2 === 0) {
+      const c = shuffle([t.nom, ...autres.slice(0, 3).map((x) => x.nom)]);
+      qs.push({ m: 'triades', q: 'Quelle triade associe : ' + t.el.join(' ; ') + ' ?', c, a: c.indexOf(t.nom), e: t.nom + ' → ' + t.evoque + (t.note ? '. ' + t.note : '') });
+    } else {
+      const manque = Math.floor(Math.random() * 3);
+      const pieges = Array.from(new Set(shuffle(autres.flatMap((x) => x.el)))).filter((x) => !t.el.includes(x)).slice(0, 3);
+      const c = shuffle([t.el[manque], ...pieges]);
+      const vus = t.el.filter((_, i) => i !== manque).join(' ; ');
+      qs.push({ m: 'triades', q: t.nom + ' (' + t.evoque + ') : ' + vus + ' et… ?', c, a: c.indexOf(t.el[manque]), e: t.nom + ' : ' + t.el.join(' ; ') + '.' });
+    }
+  });
+  return qs.slice(0, 15);
+}
+
+function TriadesView({ st, save, startQcm }: PP) {
+  const [q, setQ] = useState('');
+  const [m, setM] = useState('tous');
+  const [cache, setCache] = useState(false);
+  const [vu, setVu] = useState<string[]>([]);
+  const mats = Array.from(new Set(TRIADES.map((t) => t.m)));
+  const nq = norm(q.trim());
+  const list = TRIADES.filter((t) => (m === 'tous' || t.m === m) && (!nq || norm(t.nom + ' ' + t.evoque + ' ' + t.el.join(' ')).includes(nq)));
+  const favs = st.favT || [];
+  return (
+    <Page>
+      <H1>Triades</H1>
+      <Sub>{TRIADES.length} triades et associations à connaître par cœur, avec ce qu’elles évoquent.</Sub>
+      <Btn title="Quiz triades (15 questions)" onPress={() => startQcm('Quiz triades', quizTriades())} />
+      <Chips>
+        <Chip label={cache ? '👁 Afficher les réponses' : '🙈 Mode révision (cacher)'} on={cache} onPress={() => { setCache(!cache); setVu([]); }} />
+      </Chips>
+      <SearchBox value={q} onChange={setQ} placeholder="Rechercher (ex. Beck, tamponnade, ictère)" />
+      <Chips>
+        <Chip label="Toutes" on={m === 'tous'} onPress={() => setM('tous')} />
+        {mats.map((x) => <Chip key={x} label={matById(x)?.nom || x} on={m === x} onPress={() => setM(x)} />)}
+      </Chips>
+      {list.map((t) => {
+        const montre = !cache || vu.includes(t.id);
+        const fav = favs.includes(t.id);
+        return (
+          <Card key={t.id} onPress={cache && !montre ? () => setVu((v) => [...v, t.id]) : undefined}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ flex: 1, fontWeight: '900', color: C.navy, fontSize: 16 }}>{t.nom}</Text>
+              <Pressable hitSlop={8} onPress={() => save((x) => ({ ...x, favT: fav ? (x.favT || []).filter((y) => y !== t.id) : [...(x.favT || []), t.id] }))}>
+                <Text style={{ fontSize: 18, color: fav ? C.gold : C.muted }}>{fav ? '★' : '☆'}</Text>
+              </Pressable>
+            </View>
+            {montre ? (
+              <>
+                {t.el.map((e, k) => (
+                  <View key={k} style={{ flexDirection: 'row', marginTop: 6 }}>
+                    <Text style={s.triNum}>{k + 1}</Text>
+                    <Text style={{ flex: 1, color: C.ink, lineHeight: 20 }}>{e}</Text>
+                  </View>
+                ))}
+                <Text style={{ color: C.ok, fontWeight: '800', marginTop: 8 }}>→ {t.evoque}</Text>
+                {!!t.note && <Text style={{ color: C.muted, marginTop: 4, lineHeight: 19, fontSize: 13 }}>{t.note}</Text>}
+              </>
+            ) : (
+              <Text style={{ color: C.muted, marginTop: 6 }}>Récite les 3 éléments, puis touche pour vérifier.</Text>
+            )}
+          </Card>
+        );
+      })}
+      {!list.length && <Text style={{ color: C.muted }}>Aucune triade trouvée.</Text>}
+    </Page>
+  );
+}
+
 // ---------- Items de l'EDN ----------
 const itemsDe = (f: Fiche): number[] => f.items || ITEMS_FICHES[f.id]?.items || [];
 const rangDe = (f: Fiche, i: number): 'A' | 'B' | undefined => f.parts[i]?.rg || ITEMS_FICHES[f.id]?.rangs?.[i];
@@ -2141,6 +2220,7 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12355B', paddingHorizontal: 16, paddingBottom: 10 },
   logo: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#0B7A75', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   brand: { color: '#fff', fontWeight: '900', fontSize: 17, letterSpacing: 1.2, flex: 1 },
+  triNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.navy, color: '#fff', textAlign: 'center', fontWeight: '900', fontSize: 12, lineHeight: 22, marginRight: 8, overflow: 'hidden' },
   rang: { color: '#fff', fontWeight: '800', fontSize: 11, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
   cpt: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
