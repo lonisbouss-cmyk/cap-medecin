@@ -32,37 +32,3 @@
     }
   }
 }
-{
-  "expo": {
-    "name": "CAP Médecin",
-    "slug": "cap-medecin",
-    "version": "1.0.0",
-    "orientation": "default",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#12355B"
-    },
-    "android": {
-      "package": "com.lonis57.capmedecin",
-      "versionCode": 1,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#12355B"
-      }
-    },
-    "ios": {
-      "bundleIdentifier": "com.lonis57.capmedecin",
-      "supportsTablet": true
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "name": "CAP Médecin",
-      "shortName": "CAP Médecin",
-      "themeColor": "#12355B",
-      "backgroundColor": "#F3F6F8"
-    }
-  }
-}
