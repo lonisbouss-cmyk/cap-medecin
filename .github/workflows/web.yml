@@ -1,0 +1,62 @@
+name: Publier la version web
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Preparer le projet
+        run: |
+          mkdir app
+          cp -r repo/. app/
+          rm -rf app/.git app/.github
+          cd app
+          node extras/mkicon.js
+          node -e "
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          a.expo.experiments = Object.assign({}, a.expo.experiments, { baseUrl: '/cap-medecin' });
+          a.expo.web = Object.assign({}, a.expo.web, { output: 'single', bundler: 'metro' });
+          fs.writeFileSync('app.json', JSON.stringify(a, null, 2));
+          "
+      - name: Installer les dependances
+        working-directory: app
+        run: |
+          echo "legacy-peer-deps=true" > .npmrc
+          npm install
+          npx expo install react-dom react-native-web @expo/metro-runtime
+          npx expo install --fix || true
+      - name: Exporter la version web
+        working-directory: app
+        run: |
+          npx expo export --platform web
+          cp extras/*.html dist/
+          cp extras/sw.js extras/manifest.webmanifest dist/
+          cp assets/icon.png dist/icon.png
+          node extras/pwa-inject.js dist/index.html
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
+          git -C ../repo rev-parse HEAD > dist/version.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4
