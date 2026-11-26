@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { C, SOMBRE, Page, H1, H2, Sub, Card, Btn, Back, Tag, Chip, Chips, SearchBox, Bar, Notice, Row, norm, u } from './ui';
 import { MATIERES, NIVEAUX, FICHES, CODES, ARTICLES, ARRETS, QCM, CAS, METHODES, LEXIQUE, ADAGES } from './data';
 import type { Fiche, Article, Arret, Question, CasPratique, Methode, Niveau } from './types';
+import { AuthGate, useSync, Signaler, Compte, CLOUD_OK, type User } from './cloud';
 
 // ---------- état sauvegardé ----------
 type St = {
@@ -22,6 +23,7 @@ type St = {
   niveau: Niveau | 'tous';
   box: Record<string, number>;
   due: Record<string, string>;
+  maj?: number;
 };
 const VIDE: St = { fav: {}, lu: {}, maitrise: {}, notes: {}, qTot: 0, qOk: 0, parM: {}, erreurs: [], casDone: {}, jours: [], examBest: 0, niveau: 'tous', box: {}, due: {} };
 const KEY = 'capm:state';
@@ -105,17 +107,23 @@ type Route =
   | { s: 'notes' }
   | { s: 'progression' }
   | { s: 'reglages' }
-  | { s: 'apropos' };
+  | { s: 'apropos' }
+  | { s: 'compte' };
 
 const TABS: { id: string; label: string; ic: string; root: Route }[] = [
   { id: 'home', label: 'Accueil', ic: '⌂', root: { s: 'home' } },
-  { id: 'cours', label: 'Cours', ic: '§', root: { s: 'cours' } },
-  { id: 'codes', label: 'Mémo', ic: '⚕', root: { s: 'codes' } },
-  { id: 'train', label: "S'entraîner", ic: '✓', root: { s: 'train' } },
-  { id: 'outils', label: 'Outils', ic: '☰', root: { s: 'outils' } },
+  { id: 'cours', label: 'Fiches', ic: '❏', root: { s: 'cours' } },
+  { id: 'outils', label: 'Outils', ic: '✚', root: { s: 'outils' } },
+  { id: 'train', label: 'Réviser', ic: '✓', root: { s: 'train' } },
+  { id: 'progres', label: 'Progrès', ic: '◔', root: { s: 'progression' } },
 ];
 
-export default function MainApp() {
+export default function Root() {
+  return <AuthGate>{(user, sortir) => <MainApp key={user?.id || 'local'} user={user} sortir={sortir} />}</AuthGate>;
+}
+
+function MainApp({ user, sortir }: { user: User | null; sortir: () => void }) {
+  const cle = user ? KEY + ':' + user.id : KEY;
   const [st, setSt] = useState<St>(VIDE);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('home');
@@ -124,7 +132,7 @@ export default function MainApp() {
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(KEY);
+        const raw = (await AsyncStorage.getItem(cle)) || (user ? await AsyncStorage.getItem(KEY) : null);
         if (raw) setSt({ ...VIDE, ...JSON.parse(raw) });
       } catch {}
       setReady(true);
@@ -135,16 +143,23 @@ export default function MainApp() {
     setSt((prev) => {
       const n = f(prev);
       const d = today();
-      const n2 = n.jours.includes(d) ? n : { ...n, jours: [...n.jours, d].slice(-60) };
-      AsyncStorage.setItem(KEY, JSON.stringify(n2)).catch(() => {});
+      const n1 = n.jours.includes(d) ? n : { ...n, jours: [...n.jours, d].slice(-60) };
+      const n2 = { ...n1, maj: Date.now() };
+      AsyncStorage.setItem(cle, JSON.stringify(n2)).catch(() => {});
       return n2;
     });
+
+  const sync = useSync(user, st, ready, (t) => {
+    const n = { ...VIDE, ...t };
+    AsyncStorage.setItem(cle, JSON.stringify(n)).catch(() => {});
+    setSt(n);
+  });
 
   const route = stack[stack.length - 1];
   const go = (r: Route) => setStack((s) => [...s, r]);
   const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
   const switchTab = (id: string) => {
-    const t = TABS.find((x) => x.id === id)!;
+    const t = TABS.find((x) => x.id === id) || TABS[0];
     setTab(id);
     setStack([t.root]);
   };
@@ -181,7 +196,7 @@ export default function MainApp() {
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
 
-  const P = { st, save, go, back, openFiche, openArt, openArret, startQcm, switchTab };
+  const P = { st, save, go, back, openFiche, openArt, openArret, startQcm, switchTab, user, sortir, sync, racine: stack.length === 1 };
   let screen: any = null;
   switch (route.s) {
     case 'home': screen = <Home {...P} />; break;
@@ -211,12 +226,20 @@ export default function MainApp() {
     case 'progression': screen = <Progression {...P} />; break;
     case 'reglages': screen = <Reglages {...P} />; break;
     case 'apropos': screen = <APropos {...P} />; break;
+    case 'compte': screen = <CompteView {...P} />; break;
   }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar barStyle={SOMBRE ? 'light-content' : 'dark-content'} backgroundColor={C.bg} />
-      <View key={String(stack.length) + route.s} style={{ flex: 1, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0 }}>{screen}</View>
+      <StatusBar barStyle="light-content" backgroundColor="#12355B" />
+      <View style={[s.header, { paddingTop: (Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0) + 8 }]}>
+        <View style={s.logo}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: -1 }}>✚</Text></View>
+        <Text style={s.brand}>CAP MÉDECIN</Text>
+        <Pressable onPress={() => { setTab('outils'); setStack([{ s: 'outils' }, { s: 'compte' }]); }} hitSlop={8} style={s.avatar}>
+          <Text style={{ color: '#fff', fontWeight: '900' }}>{user ? user.email.slice(0, 1).toUpperCase() : '👤'}</Text>
+        </Pressable>
+      </View>
+      <View key={String(stack.length) + route.s} style={{ flex: 1 }}>{screen}</View>
       <View style={s.tabbar}>
         {TABS.map((t) => {
           const on = t.id === tab;
@@ -242,6 +265,10 @@ type PP = {
   openArret: (id: string) => void;
   startQcm: (t: string, l: Question[], exam?: boolean) => void;
   switchTab: (id: string) => void;
+  user: User | null;
+  sortir: () => void;
+  sync: string;
+  racine: boolean;
 };
 
 // ---------- Accueil ----------
@@ -332,8 +359,11 @@ function Home({ st, go, openFiche, openArt, openArret, startQcm, switchTab }: PP
       <H2>Accès rapide</H2>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {[
-          ['📚', 'Cours', () => switchTab('cours')],
-          ['⚕️', 'Mémo', () => switchTab('codes')],
+          ['📚', 'Fiches', () => switchTab('cours')],
+          ['⚕️', 'Mémo', () => go({ s: 'codes' })],
+          ['🧮', 'Calculateurs', () => go({ s: 'delais' })],
+          ['📂', 'Cas cliniques', () => go({ s: 'caslist' })],
+          ['📈', 'Progrès', () => switchTab('progres')],
           ['💊', 'Médicaments', () => go({ s: 'arrets' })],
           ['✍️', 'Méthodologie', () => go({ s: 'methodes' })],
           ['🃏', 'Révision express', () => go({ s: 'flashmenu' })],
@@ -369,7 +399,7 @@ function Cours({ st, save, go, openFiche }: PP) {
   const res = q.trim().length > 1 ? FICHES.filter((f) => norm(f.titre + ' ' + f.intro + ' ' + f.parts.map((p) => p.t + ' ' + p.l.join(' ')).join(' ')).includes(norm(q.trim()))) : [];
   return (
     <Page>
-      <H1>Cours</H1>
+      <H1>Fiches de cours</H1>
       <Sub>{FICHES.length} fiches dans {MATIERES.length} matières, avec les repères et les médicaments à connaître.</Sub>
       <SearchBox value={q} onChange={setQ} placeholder="Chercher une notion (ex. : sepsis)" />
       {q.trim().length > 1 ? (
@@ -561,18 +591,20 @@ function FicheView({ id, st, save, back, openArt, openArret, openFiche }: PP & {
           ))}
         </>
       )}
+      <Signaler cible={'fiche:' + f.id} libelle={f.titre} />
     </Page>
   );
 }
 
 // ---------- Mémo ----------
-function Codes({ st, openArt, go }: PP) {
+function Codes({ st, openArt, go, back }: PP) {
   const [code, setCode] = useState<string>('tous');
   const [q, setQ] = useState('');
   const nq = norm(q.trim());
   const list = ARTICLES.filter((a) => (code === 'tous' || a.code === code) && (!nq || norm(a.num + ' ' + a.titre + ' ' + a.texte).includes(nq) || norm('article ' + a.num) === nq));
   return (
     <Page>
+      <Back onPress={back} />
       <H1>Mémo</H1>
       <Sub>{ARTICLES.length} repères (valeurs normales de l’adulte, scores, formules) et {ARRETS.length} classes de médicaments.</Sub>
       <Card onPress={() => go({ s: 'arrets' })} style={{ backgroundColor: C.redL, borderColor: 'transparent' }}>
@@ -720,7 +752,7 @@ function Train({ st, startQcm, go }: PP) {
   const pool = QCM.filter((q) => niv === 'tous' || matById(q.m)?.niv === niv);
   return (
     <Page>
-      <H1>S'entraîner</H1>
+      <H1>Réviser</H1>
       <Sub>{QCM.length} QCM corrigés, {CAS.length} cas cliniques, et des quiz générés à partir du mémo et du lexique.</Sub>
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
         <View style={{ flex: 1 }}>
@@ -912,6 +944,7 @@ function QcmRun({ titre, list, exam, st, save, back }: PP & { titre: string; lis
             <Text style={{ color: C.ink, lineHeight: 21 }}>{q.e}</Text>
           </Card>
           <Btn title={i + 1 >= list.length ? 'Voir mon résultat' : 'Question suivante'} onPress={() => suivant()} />
+          <Signaler key={i} cible={'qcm:' + (q as any).m + ':' + q.q.slice(0, 120)} libelle={'QCM ' + (i + 1)} />
         </>
       )}
     </Page>
@@ -1027,6 +1060,7 @@ function CasView({ id, save, back, openFiche }: PP & { id: string }) {
           ))}
           <Btn title="Refaire ce cas" kind="ghost" onPress={() => { setStep(0); setPicked(null); setScore(0); }} />
           <Btn title="Retour aux cas" onPress={back} />
+          <Signaler cible={'cas:' + cas.id} libelle={cas.titre} />
         </>
       )}
     </Page>
@@ -1036,16 +1070,17 @@ function CasView({ id, save, back, openFiche }: PP & { id: string }) {
 // ---------- Outils ----------
 function Outils({ go }: PP) {
   const items: [string, string, string, Route][] = [
+    ['⚕️', 'Mémo des valeurs et scores', `${ARTICLES.length} repères : biologie, gaz du sang, scores, formules`, { s: 'codes' }],
+    ['💊', 'Médicaments', `${ARRETS.length} classes : mécanisme, indications, surveillance`, { s: 'arrets' }],
     ['✍️', 'Méthodologie', 'PASS/LAS, dossier progressif, ECOS, raisonnement clinique', { s: 'methodes' }],
     ['🧮', 'Calculateurs', 'IMC, clairance, DFG, Glasgow, CHA2DS2-VASc, qSOFA…', { s: 'delais' }],
     ['🚨', 'Patient grave : ABCDE', 'Évaluer et traiter dans le bon ordre', { s: 'normes' }],
     ['📖', 'Lexique médical', `${LEXIQUE.length} termes définis`, { s: 'lexique' }],
     ['🧠', 'Mnémos et aphorismes', `${ADAGES.length} moyens mnémotechniques`, { s: 'adages' }],
     ['🎓', 'Les études de médecine', 'PASS/LAS, EDN, ECOS, internat', { s: 'juridictions' }],
-    ['🃏', 'Révision express', 'Cartes mémoire avec répétition espacée', { s: 'flashmenu' }],
-    ['📈', 'Ma progression', 'Avancement par matière', { s: 'progression' }],
     ['📝', 'Mes notes', 'Toutes tes notes personnelles', { s: 'notes' }],
     ['★', 'Mes favoris', 'Fiches, repères et médicaments enregistrés', { s: 'favoris' }],
+    ['👤', 'Mon compte', CLOUD_OK ? 'Connexion, sauvegarde, suppression du compte' : 'Sauvegarde de la progression', { s: 'compte' }],
     ['⚙️', 'Réglages', 'Thème, taille du texte, progression', { s: 'reglages' }],
     ['ℹ️', 'À propos', 'Sources, mentions et contact', { s: 'apropos' }],
   ];
@@ -1499,11 +1534,23 @@ function APropos({ back }: PP) {
       <Btn kind="ghost" title="Haute Autorité de santé ↗" onPress={() => Linking.openURL('https://www.has-sante.fr')} />
       <Btn kind="ghost" title="Base de données publique des médicaments ↗" onPress={() => Linking.openURL('https://base-donnees-publique.medicaments.gouv.fr')} />
       <Btn kind="ghost" title="Signaler une erreur par e-mail" onPress={() => Linking.openURL('mailto:lonisboussouar@gmail.com?subject=CAP%20M%C3%A9decin%20-%20signalement')} />
-      <Text style={{ color: C.muted, fontSize: 12, marginTop: 10 }}>Version 1.0</Text>
+      <Text style={{ color: C.muted, fontSize: 12, marginTop: 10 }}>Version 2.0</Text>
     </Page>
   );
 }
 
+
+// ---------- Mon compte ----------
+function CompteView({ back, user, sortir, sync }: PP) {
+  return (
+    <Page>
+      <Back onPress={back} />
+      <H1>Mon compte</H1>
+      <Compte user={user} sortir={sortir} sync={sync} />
+      <Notice>Ton compte sert uniquement à sauvegarder ta progression (fiches lues, scores, favoris, notes) et à la retrouver sur tes autres appareils. N’écris jamais de données de patient dans tes notes.</Notice>
+    </Page>
+  );
+}
 
 // ---------- Révision express (cartes mémoire, système de Leitner) ----------
 type Carte = { k: string; recto: string; sous?: string; verso: string; detail?: string };
@@ -1631,12 +1678,13 @@ function MesNotes({ st, back, openFiche }: PP) {
   );
 }
 
-function Progression({ st, back, go }: PP) {
+function Progression({ st, back, go, racine, user, sync }: PP) {
   const lus = Object.keys(st.lu).length;
   return (
     <Page>
-      <Back onPress={back} />
-      <H1>Ma progression</H1>
+      {!racine && <Back onPress={back} />}
+      <H1>Mes progrès</H1>
+      {CLOUD_OK && <Text style={{ color: user ? (sync === 'erreur' ? C.gold : C.ok) : C.muted, marginBottom: 10, fontSize: 13 }}>{user ? (sync === 'erreur' ? '⚠ Hors ligne : sauvegarde en attente' : '☁ Sauvegardé dans ton compte') : 'Sans compte : progression gardée sur cet appareil'}</Text>}
       <Card>
         <Row label="Fiches lues" value={`${lus} / ${FICHES.length}`} />
         <Row label="Fiches maîtrisées" value={String(Object.keys(st.maitrise).length)} />
@@ -1664,6 +1712,10 @@ function Progression({ st, back, go }: PP) {
 }
 
 const s = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12355B', paddingHorizontal: 16, paddingBottom: 10 },
+  logo: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#0B7A75', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  brand: { color: '#fff', fontWeight: '900', fontSize: 17, letterSpacing: 1.2, flex: 1 },
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   tabbar: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.bar, paddingBottom: Platform.OS === 'ios' ? 0 : 6, paddingTop: 6 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 4 },
   hero: { backgroundColor: '#12355B', borderRadius: 20, padding: 18, marginBottom: 12 },
